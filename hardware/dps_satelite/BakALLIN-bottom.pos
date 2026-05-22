@@ -1,0 +1,24 @@
+### Footprint positions - created on 2026-04-02T00:08:25+0200 ###
+### Printed by KiCad version 9.0.7
+## Unit = mm, Angle = deg.
+## Side : bottom
+# Ref     Val              Package                                             PosX       PosY       Rot  Side
+C5        100n             C_0603_1608Metric_Pad1.08x0.95mm_HandSolder     192.4900   -44.6700  -90.0000  bottom
+C6        10u              C_0603_1608Metric_Pad1.08x0.95mm_HandSolder     190.9600   -44.6800  -90.0000  bottom
+C17       100n             C_0603_1608Metric_Pad1.08x0.95mm_HandSolder     190.9400  -111.5200    0.0000  bottom
+C18       10u              C_0603_1608Metric_Pad1.08x0.95mm_HandSolder     190.9400  -110.0100    0.0000  bottom
+C19       100n             C_0603_1608Metric_Pad1.08x0.95mm_HandSolder     174.1600   -91.5900    0.0000  bottom
+C20       10u              C_0603_1608Metric_Pad1.08x0.95mm_HandSolder     174.1500   -93.0900    0.0000  bottom
+C22       100n             C_0603_1608Metric_Pad1.08x0.95mm_HandSolder     167.6000   -82.4900  180.0000  bottom
+C29       100n             C_0603_1608Metric_Pad1.08x0.95mm_HandSolder     201.0700   -74.2475   90.0000  bottom
+C30       10u              C_0603_1608Metric_Pad1.08x0.95mm_HandSolder     198.7500   -74.2500   90.0000  bottom
+IC2       IRS-D200ST00R1   IRSD200ST00R1                                   200.0000   -80.0000  -90.0000  bottom
+J4        MIC_L            PinHeader_1x03_P2.54mm_Vertical_SMD_Pin1Right   204.0000  -110.0000  180.0000  bottom
+J5        MIC_R            PinHeader_1x03_P2.54mm_Vertical_SMD_Pin1Right   196.0000  -110.0000  180.0000  bottom
+LED1      ASMT-YTD2-0BB02  ASMTYTD20BB02                                   232.6650   -79.8300   90.0000  bottom
+R10       330              R_0603_1608Metric_Pad0.98x0.95mm_HandSolder     226.5300   -81.3200  180.0000  bottom
+R11       330              R_0603_1608Metric_Pad0.98x0.95mm_HandSolder     226.5300   -79.8300  180.0000  bottom
+R12       330              R_0603_1608Metric_Pad0.98x0.95mm_HandSolder     226.5300   -78.3400  180.0000  bottom
+R14       10k              R_0603_1608Metric_Pad0.98x0.95mm_HandSolder     167.6000   -81.0200  180.0000  bottom
+R25       10k              R_0603_1608Metric_Pad0.98x0.95mm_HandSolder     194.3100   -80.1900  -90.0000  bottom
+## End
