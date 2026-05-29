@@ -1,0 +1,447 @@
+substitutions:
+  name: "satelit"
+  friendly_name: "Satelit"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+  on_boot:
+    priority: -100
+    then:
+      - delay: 5s
+      - if:
+          condition:
+            binary_sensor.is_on: total_presence
+          then:
+            - globals.set:
+                id: system_state
+                value: '1'
+            - script.execute: update_leds
+            - micro_wake_word.start:
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+    version: recommended
+    sdkconfig_options:
+      CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: y
+      CONFIG_ESP32S3_DATA_CACHE_64KB: y
+      CONFIG_ESP32S3_DATA_CACHE_LINE_64B: y
+      CONFIG_SPIRAM: y
+      CONFIG_SPIRAM_MODE_OCT: y
+      CONFIG_SPIRAM_TYPE_AUTO: y
+      CONFIG_SPIRAM_SPEED_80M: y
+      CONFIG_SPIRAM_BOOT_INIT: y
+      CONFIG_SPIRAM_IGNORE_NOTFOUND: n
+      CONFIG_SPIRAM_USE_MALLOC: y
+      CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL: "16384"
+      CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP: y
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+
+text_sensor:
+  - platform: template
+    name: "Posledná požiadavka"
+    id: last_request
+    icon: "mdi:microphone"
+
+  - platform: template
+    name: "Posledná odpoveď"
+    id: last_response
+    icon: "mdi:robot"
+
+# --- ETHERNET W5500 ---
+ethernet:
+  type: W5500
+  clk_pin: GPIO13
+  mosi_pin: GPIO11
+  miso_pin: GPIO12
+  cs_pin: GPIO14
+  interrupt_pin: GPIO10
+  reset_pin: GPIO9
+
+api:
+
+ota:
+  - platform: esphome
+    on_begin:
+      then:
+        - voice_assistant.stop:
+            id: va
+        - micro_wake_word.stop:
+        - light.turn_on:
+            id: status_led
+            brightness: 50%
+            red: 100%
+            green: 50%
+            blue: 0%
+            effect: "Pulse Fialova"
+    on_end:
+      then:
+        - delay: 3s
+        - lambda: |-
+            esp_restart();
+    on_error:
+      then:
+        - light.turn_on:
+            id: status_led
+            brightness: 100%
+            red: 100%
+            green: 0%
+            blue: 0%
+            effect: "Fast Blink Cervena"
+
+logger:
+  level: DEBUG
+  baud_rate: 0
+
+web_server:
+  port: 80
+
+# --- SENZORY ---
+sensor:
+  - platform: adc
+    pin: GPIO7
+    name: "Úroveň Svetla"
+    id: light_level
+    update_interval: 5s
+    attenuation: 12db
+    unit_of_measurement: "%"
+    filters:
+      - lambda: |-
+          float percent = (x / 3.3) * 100.0;
+          if (percent < 0) return 0.0;
+          if (percent > 100) return 100.0;
+          return percent;
+
+# --- MIKROFÓN INMP441 I2S ---
+i2s_audio:
+  i2s_bclk_pin: GPIO4
+  i2s_lrclk_pin: GPIO5
+
+microphone:
+  - platform: i2s_audio
+    id: mic_i2s
+    i2s_din_pin: GPIO6
+    adc_type: external
+    pdm: false
+    channel: left
+
+# --- RGB LED ---
+output:
+  - platform: ledc
+    pin: GPIO40
+    id: led_red
+  - platform: ledc
+    pin: GPIO39
+    id: led_green
+  - platform: ledc
+    pin: GPIO38
+    id: led_blue
+
+light:
+  - platform: rgb
+    name: "Status LED"
+    id: status_led
+    red: led_red
+    green: led_green
+    blue: led_blue
+    restore_mode: ALWAYS_OFF
+    effects:
+      - pulse:
+          name: "Pulse Fialova"
+          transition_length: 500ms
+          update_interval: 500ms
+      - pulse:
+          name: "Blink Cervena"
+          transition_length: 200ms
+          update_interval: 200ms
+      - pulse:
+          name: "Fast Blink Cervena"
+          transition_length: 80ms
+          update_interval: 80ms
+
+# --- WAKE WORD A HLASOVÝ ASISTENT ---
+micro_wake_word:
+  id: mww
+  models:
+    - model: okay_nabu
+      probability_cutoff: 0.87
+  on_wake_word_detected:
+    - voice_assistant.start:
+        wake_word: !lambda return wake_word;
+    - globals.set:
+        id: va_has_error
+        value: 'false'
+    - globals.set:
+        id: system_state
+        value: '2'
+    - script.execute: update_leds
+
+voice_assistant:
+  id: va
+  microphone: mic_i2s
+  micro_wake_word: mww
+  use_wake_word: false
+  noise_suppression_level: 1
+  auto_gain: 31dBFS
+  volume_multiplier: 6.0
+
+  on_stt_end:
+    then:
+    - logger.log: "*** STT END ***"
+    - text_sensor.template.publish:
+        id: last_request
+        state: !lambda 'return x;'
+
+  on_intent_end:
+    then:
+    - logger.log: "*** INTENT END ***"
+
+  on_tts_start:
+    then:
+      - text_sensor.template.publish:
+          id: last_response
+          state: !lambda 'return x;'
+      - lambda: |- % Pri zmene jazyku prepisat aby rozumel
+          std::string response = x;
+          std::transform(response.begin(), response.end(), response.begin(), ::tolower);
+          bool is_error = (
+            response.find("neviem") != std::string::npos ||
+            response.find("nerozumiem") != std::string::npos ||
+            response.find("nepočul") != std::string::npos ||
+            response.find("nemôžem") != std::string::npos ||
+            response.find("nemám") != std::string::npos ||
+            response.find("nezrozumiteľ") != std::string::npos ||
+            response.find("skúste znova") != std::string::npos ||
+            response.find("i don't") != std::string::npos ||
+            response.find("i can't") != std::string::npos ||
+            response.find("i'm not sure") != std::string::npos ||
+            response.find("sorry") != std::string::npos
+          );
+          id(va_has_error) = is_error;
+          id(system_state) = is_error ? 4 : 3;
+      - script.execute: update_leds
+
+  on_error:
+    then:
+      - globals.set:
+          id: va_has_error
+          value: 'true'
+      - globals.set:
+          id: system_state
+          value: '4'
+      - script.execute: update_leds
+      - text_sensor.template.publish:
+          id: last_response
+          state: "⚠ Chyba hlasového asistenta"
+      - delay: 4s
+      - voice_assistant.stop:
+          id: va
+
+  on_end:
+    then:
+      - delay: 2s         
+      - if:
+          condition:
+            lambda: 'return id(va_has_error);'
+          then:
+            - delay: 2s    
+      - globals.set:
+          id: va_has_error
+          value: 'false'
+      - if:
+          condition:
+            binary_sensor.is_on: total_presence
+          then:
+            - globals.set:
+                id: system_state
+                value: '1'
+            - script.execute: update_leds
+            - micro_wake_word.start:
+          else:
+            - globals.set:
+                id: system_state
+                value: '0'
+            - script.execute: update_leds
+            - micro_wake_word.stop:
+
+# --- GLOBALS ---
+globals:
+  - id: system_state
+    type: int
+    initial_value: '0'
+  - id: va_has_error
+    type: bool
+    initial_value: 'false'
+  - id: override_led
+    type: bool
+    initial_value: 'false'
+  - id: pir_triggered
+    type: bool
+    initial_value: 'false'
+
+# --- BINARY SENSORS ---
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO8
+      mode:
+        input: true
+        pulldown: true
+    name: "PIR Pohyb"
+    id: pir_sensor
+    device_class: motion
+    filters:
+      - delayed_off: 3s
+    on_state:
+      - if:
+          condition:
+            binary_sensor.is_on: pir_sensor
+          then:
+            - globals.set:
+                id: pir_triggered
+                value: 'true'
+            - script.execute: pir_timeout
+
+  # Radar cez OUT pin
+  - platform: gpio
+    pin:
+      number: GPIO16
+      mode:
+        input: true
+        pulldown: true
+    name: "Radar Prítomnosť"
+    id: radar_presence
+    device_class: occupancy
+    filters:
+      - delayed_off: 4s
+      - delayed_on: 100ms
+
+  # ============================================================
+  # Celková prítomnosť = PIR musí najprv detekovať (AND logika)
+  # PIR spúšťa, radar udržiava
+  # ============================================================
+  - platform: template
+    name: "Celková Prítomnosť"
+    id: total_presence
+    device_class: occupancy
+    lambda: |-
+      return id(pir_triggered) && (id(pir_sensor).state || id(radar_presence).state);
+    on_state:
+      - if:
+          condition:
+            binary_sensor.is_on: total_presence
+          then:
+            - globals.set:
+                id: system_state
+                value: '1'
+            - script.execute: update_leds
+            - micro_wake_word.start:
+          else:
+            - globals.set:
+                id: pir_triggered
+                value: 'false'
+            - globals.set:
+                id: system_state
+                value: '0'
+            - script.execute: update_leds
+            - voice_assistant.stop:
+                id: va
+            - micro_wake_word.stop:
+
+  - platform: template
+    name: "Ethernet Connected"
+    id: ethernet_connected
+    device_class: connectivity
+    lambda: |-
+      return network::is_connected();
+    on_state:
+      - script.execute: update_leds
+
+# --- SCRIPTS ---
+script:
+  - id: pir_timeout
+    mode: restart
+    then:
+      - delay: 5min
+      - if:
+          condition:
+            binary_sensor.is_off: radar_presence
+          then:
+            - globals.set:
+                id: pir_triggered
+                value: 'false'
+
+  - id: update_leds
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(ethernet_connected).state;'
+          then:
+            - light.turn_on:
+                id: status_led
+                brightness: 100%
+                red: 100%
+                green: 0%
+                blue: 0%
+                effect: "Fast Blink Cervena"
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(system_state) == 2;'
+                then:
+                  - light.turn_on:
+                      id: status_led
+                      brightness: 100%
+                      red: 100%
+                      green: 0%
+                      blue: 100%
+                      effect: "Pulse Fialova"
+                else:
+                  - if:
+                      condition:
+                        lambda: 'return id(system_state) == 3;'
+                      then:
+                        - light.turn_on:
+                            id: status_led
+                            brightness: 100%
+                            red: 0%
+                            green: 100%
+                            blue: 0%
+                            effect: "none"
+                      else:
+                        - if:
+                            condition:
+                              lambda: 'return id(system_state) == 4;'
+                            then:
+                              - light.turn_on:
+                                  id: status_led
+                                  brightness: 100%
+                                  red: 100%
+                                  green: 0%
+                                  blue: 0%
+                                  effect: "Blink Cervena"
+                            else:
+                              - if:
+                                  condition:
+                                    lambda: 'return id(system_state) == 1;'
+                                  then:
+                                    - light.turn_on:
+                                        id: status_led
+                                        brightness: 50%
+                                        red: 0%
+                                        green: 0%
+                                        blue: 100%
+                                        effect: "none"
+                                  else:
+                                    - light.turn_off:
+                                        id: status_led
